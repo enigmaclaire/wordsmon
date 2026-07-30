@@ -36,6 +36,94 @@
 </script>
 <script>
 (()=>{
+  // 메모리게임은 빙고 로직과 분리된 단일 실행 경로를 사용합니다.
+  let memoryRun=0;
+  const memoryKey='wordsmon-memory-history';
+  const memoryName=value=>String(value||'트레이너').trim().replace(/\s+/g,' ')||'트레이너';
+  const getMemoryHistory=()=>{try{const value=JSON.parse(localStorage.getItem(memoryKey)||'[]');return Array.isArray(value)?value:[]}catch(error){return[]}};
+  const saveMemoryHistory=row=>{const rows=getMemoryHistory();rows.push(row);try{localStorage.setItem(memoryKey,JSON.stringify(rows.slice(-1000)))}catch(error){}};
+  const drawMemoryRanking=async(box,current)=>{
+    let server=[];
+    try{
+      const response=await fetch(`${SB_URL}/rest/v1/game_results?select=trainer_name,success,remaining_seconds,created_at&round_number=eq.3&limit=1000`,{headers:{apikey:SB_KEY,Authorization:`Bearer ${SB_KEY}`}});
+      const data=await response.json();
+      server=Array.isArray(data)?data:[];
+    }catch(error){}
+    const byName=new Map();
+    [...server,...getMemoryHistory(),current].forEach(raw=>{
+      const row={...raw,trainer_name:memoryName(raw.trainer_name),success:Boolean(raw.success),remaining_seconds:Math.max(0,Number(raw.remaining_seconds)||0),created_at:raw.created_at||new Date().toISOString()};
+      const old=byName.get(row.trainer_name);
+      if(!old||Number(row.success)>Number(old.success)||(Number(row.success)===Number(old.success)&&row.remaining_seconds>old.remaining_seconds))byName.set(row.trainer_name,row);
+    });
+    const rows=[...byName.values()].sort((a,b)=>(Number(b.success)-Number(a.success))||(b.remaining_seconds-a.remaining_seconds)||(new Date(a.created_at)-new Date(b.created_at)));
+    const list=box.querySelector('.ranking-list');
+    if(list)list.innerHTML=rows.slice(0,5).map((row,index)=>`<div>${index+1}. ${row.trainer_name} <span>${row.success?'성공':'실패'} · ${Math.round(row.remaining_seconds)}초</span></div>`).join('')||'아직 기록이 없어요';
+    const live=box.querySelector('.live-rank');
+    if(live)live.textContent=`${current.trainer_name} 트레이너님은 현재 ${Math.max(1,rows.findIndex(row=>row.trainer_name===current.trainer_name)+1)}위입니다.`;
+  };
+  const finishMemory=(run,success,remaining)=>{
+    if(run!==memoryRun||matchingLocked)return;
+    matchingLocked=true;
+    clearInterval(matchingTimerId);
+    const seconds=Math.max(0,Math.ceil(Number(remaining)||0));
+    const current={trainer_name:memoryName(trainer),success:Boolean(success),remaining_seconds:seconds,created_at:new Date().toISOString(),game:'memory'};
+    saveMemoryHistory(current);
+    fetch(`${SB_URL}/rest/v1/game_results`,{method:'POST',headers:{apikey:SB_KEY,Authorization:`Bearer ${SB_KEY}`,'Content-Type':'application/json',Prefer:'return=minimal'},body:JSON.stringify({...current,round_number:3})}).catch(()=>{});
+    if(resultOverlay)resultOverlay.remove();
+    resultOverlay=document.createElement('div');
+    resultOverlay.className='result-overlay';
+    resultOverlay.innerHTML=`<div class="result-box"><div class="result-emoji">${success?'🎉':'😅'}</div><h2>${success?'짝 맞추기 성공!':'시간이 끝났어요!'}</h2><p>${success?current.trainer_name+' 트레이너님, 잘했어요.':'다시 도전해 보세요.'}</p><p class="result-time">남은 시간: ${seconds}초</p><div class="ranking-title">짝 맞추기 현재 순위</div><div class="ranking-list">순위를 불러오는 중...</div><p class="live-rank">현재 순위를 계산하고 있어요...</p>${success?'<button class="result-view">결과 보기</button>':''}<button class="result-home">처음으로</button></div>`;
+    document.body.appendChild(resultOverlay);
+    resultOverlay.querySelector('.result-home').onclick=()=>location.href=location.pathname;
+    drawMemoryRanking(resultOverlay.querySelector('.result-box'),current);
+  };
+  startMatching=()=>{
+    const run=++memoryRun;
+    clearInterval(matchingTimerId);
+    if(resultOverlay)resultOverlay.remove();
+    matchingScreen.classList.add('show');
+    document.querySelectorAll('.screen:not(#matching)').forEach(screen=>screen.classList.remove('show'));
+    matchingCards=[];matchingFirst=null;matchingMatched=0;matchingLocked=false;
+    const cards=[];
+    wordData.forEach((item,index)=>{cards.push({index,type:'word',text:item.answer});cards.push({index,type:'meaning',text:item.meaning})});
+    matchingCards=shuffle(cards);
+    const board=document.getElementById('matchingBoard');
+    board.innerHTML=matchingCards.map(card=>`<button class="matching-card hidden-card" data-pair="${card.index}" data-type="${card.type}"><span class="card-label">${card.type==='word'?'단어':'뜻'}</span><span class="card-text">${card.text}</span></button>`).join('');
+    const end=Date.now()+120000;
+    matchingGameEndTime=end;
+    const tick=()=>{
+      if(run!==memoryRun)return;
+      const left=Math.max(0,end-Date.now());
+      const seconds=Math.ceil(left/1000);
+      const timer=document.getElementById('matchingTimer');
+      if(timer)timer.textContent=`${Math.floor(seconds/60)}:${String(seconds%60).padStart(2,'0')}`;
+      if(left<=0)finishMemory(run,false,0);
+    };
+    document.querySelectorAll('#matchingBoard .matching-card').forEach(card=>{card.onclick=()=>{
+      if(run!==memoryRun||matchingLocked||card.classList.contains('matched')||card===matchingFirst)return;
+      card.classList.add('revealed');card.classList.remove('hidden-card');
+      if(!matchingFirst){matchingFirst=card;return}
+      const first=matchingFirst;
+      const matched=first.dataset.pair===card.dataset.pair&&first.dataset.type!==card.dataset.type;
+      if(matched){first.classList.add('matched');card.classList.add('matched');matchingMatched++;matchingFirst=null;if(matchingMatched===wordData.length)finishMemory(run,true,Math.max(0,(end-Date.now())/1000))}
+      else{matchingLocked=true;setTimeout(()=>{if(run!==memoryRun)return;first.classList.remove('revealed');first.classList.add('hidden-card');card.classList.remove('revealed');card.classList.add('hidden-card');matchingFirst=null;matchingLocked=false},600)}
+    }});
+    tick();
+    matchingTimerId=setInterval(tick,250);
+  };
+  showMatchingResult=(success,remaining)=>{
+    if(document.getElementById('matching')?.classList.contains('show')){
+      const left=Math.max(0,(matchingGameEndTime-Date.now())/1000);
+      if(success&&matchingMatched<wordData.length)return;
+      if(success&&left<=0)return finishMemory(memoryRun,false,0);
+      if(!success&&left>0.5)return;
+      return finishMemory(memoryRun,success,left);
+    }
+  };
+})();
+</script>
+<script>
+(()=>{
   const finalMemoryResult=showMatchingResult;
   const memoryHistoryKey='wordsmon-memory-history';
   const cleanName=value=>String(value||'트레이너').trim().replace(/\s+/g,' ')||'트레이너';
@@ -55,12 +143,14 @@
     if(matchingVisible){
       const complete=typeof matchingMatched==='number'&&Array.isArray(wordData)&&matchingMatched>=wordData.length;
       const actualRemaining=typeof matchingGameEndTime==='number'?Math.max(0,(matchingGameEndTime-Date.now())/1000):effectiveRemaining;
-      if(actualRemaining>0&&effectiveRemaining<=0)effectiveRemaining=actualRemaining;
+      if(actualRemaining>0)effectiveRemaining=actualRemaining;
       if(actualRemaining<=0&&success){success=false;effectiveRemaining=0}
       if(success&&!complete)return;
       if(!success&&actualRemaining>0.5)return;
     }
     const result=finalMemoryResult(success,effectiveRemaining);
+    setTimeout(()=>{const box=document.querySelector('.result-overlay .result-box');const time=box?.querySelector('.result-time');if(time)time.textContent=`남은 시간: ${Math.ceil(effectiveRemaining)}초`},800);
+    setTimeout(()=>{const box=document.querySelector('.result-overlay .result-box');const time=box?.querySelector('.result-time');if(time)time.textContent=`남은 시간: ${Math.ceil(effectiveRemaining)}초`},800);
     if(!matchingVisible)return result;
     setTimeout(async()=>{
       const box=document.querySelector('.result-overlay .result-box');
@@ -909,6 +999,27 @@ let lastBingoTokenOrder=[];const originalSetupBingoRandom=setupBingo;setupBingo=
 </script>
 <script>
 (()=>{
+  let memoryRun=0;
+  const memoryKey='wordsmon-memory-history';
+  const memoryName=value=>String(value||'트레이너').trim().replace(/\s+/g,' ')||'트레이너';
+  const getHistory=()=>{try{const value=JSON.parse(localStorage.getItem(memoryKey)||'[]');return Array.isArray(value)?value:[]}catch(error){return[]}};
+  const saveHistory=row=>{const rows=getHistory();rows.push(row);try{localStorage.setItem(memoryKey,JSON.stringify(rows.slice(-1000)))}catch(error){}};
+  const renderMemoryRanking=async(box,current)=>{
+    let server=[];
+    try{const response=await fetch(`${SB_URL}/rest/v1/game_results?select=trainer_name,success,remaining_seconds,created_at&round_number=eq.3&limit=1000`,{headers:{apikey:SB_KEY,Authorization:`Bearer ${SB_KEY}`}});const data=await response.json();server=Array.isArray(data)?data:[]}catch(error){}
+    const byName=new Map();
+    [...server,...getHistory(),current].forEach(raw=>{const row={...raw,trainer_name:memoryName(raw.trainer_name),success:Boolean(raw.success),remaining_seconds:Math.max(0,Number(raw.remaining_seconds)||0),created_at:raw.created_at||new Date().toISOString()};const old=byName.get(row.trainer_name);if(!old||Number(row.success)>Number(old.success)||(Number(row.success)===Number(old.success)&&row.remaining_seconds>old.remaining_seconds))byName.set(row.trainer_name,row)});
+    const rows=[...byName.values()].sort((a,b)=>(Number(b.success)-Number(a.success))||(b.remaining_seconds-a.remaining_seconds)||(new Date(a.created_at)-new Date(b.created_at)));
+    const list=box.querySelector('.ranking-list');if(list)list.innerHTML=rows.slice(0,5).map((row,index)=>`<div>${index+1}. ${row.trainer_name} <span>${row.success?'성공':'실패'} · ${Math.round(row.remaining_seconds)}초</span></div>`).join('')||'아직 기록이 없어요';
+    const live=box.querySelector('.live-rank');if(live)live.textContent=`${current.trainer_name} 트레이너님은 현재 ${Math.max(1,rows.findIndex(row=>row.trainer_name===current.trainer_name)+1)}위입니다.`;
+  };
+  const finishMemory=(run,success,remaining)=>{if(run!==memoryRun||matchingLocked)return;matchingLocked=true;clearInterval(matchingTimerId);const seconds=Math.max(0,Math.ceil(Number(remaining)||0));const current={trainer_name:memoryName(trainer),success:Boolean(success),remaining_seconds:seconds,created_at:new Date().toISOString(),game:'memory'};saveHistory(current);fetch(`${SB_URL}/rest/v1/game_results`,{method:'POST',headers:{apikey:SB_KEY,Authorization:`Bearer ${SB_KEY}`,'Content-Type':'application/json',Prefer:'return=minimal'},body:JSON.stringify({...current,round_number:3})}).catch(()=>{});if(resultOverlay)resultOverlay.remove();resultOverlay=document.createElement('div');resultOverlay.className='result-overlay';resultOverlay.innerHTML=`<div class="result-box"><div class="result-emoji">${success?'🎉':'😅'}</div><h2>${success?'짝 맞추기 성공!':'시간이 끝났어요!'}</h2><p>${success?current.trainer_name+' 트레이너님, 잘했어요.':'다시 도전해 보세요.'}</p><p class="result-time">남은 시간: ${seconds}초</p><div class="ranking-title">짝 맞추기 현재 순위</div><div class="ranking-list">순위를 불러오는 중...</div><p class="live-rank">현재 순위를 계산하고 있어요...</p>${success?'<button class="result-view">결과 보기</button>':''}<button class="result-home">처음으로</button></div>`;document.body.appendChild(resultOverlay);resultOverlay.querySelector('.result-home').onclick=()=>location.href=location.pathname;renderMemoryRanking(resultOverlay.querySelector('.result-box'),current)};
+  startMatching=()=>{const run=++memoryRun;clearInterval(matchingTimerId);if(resultOverlay)resultOverlay.remove();matchingScreen.classList.add('show');document.querySelectorAll('.screen:not(#matching)').forEach(screen=>screen.classList.remove('show'));matchingCards=[];matchingFirst=null;matchingMatched=0;matchingLocked=false;const cards=[];wordData.forEach((item,index)=>{cards.push({index,type:'word',text:item.answer});cards.push({index,type:'meaning',text:item.meaning})});matchingCards=shuffle(cards);const board=document.getElementById('matchingBoard');board.innerHTML=matchingCards.map(card=>`<button class="matching-card hidden-card" data-pair="${card.index}" data-type="${card.type}"><span class="card-label">${card.type==='word'?'단어':'뜻'}</span><span class="card-text">${card.text}</span></button>`).join('');const end=Date.now()+120000;matchingGameEndTime=end;const tick=()=>{if(run!==memoryRun)return;const left=Math.max(0,end-Date.now());const seconds=Math.ceil(left/1000);const timer=document.getElementById('matchingTimer');if(timer)timer.textContent=`${Math.floor(seconds/60)}:${String(seconds%60).padStart(2,'0')}`;if(left<=0)finishMemory(run,false,0)};document.querySelectorAll('#matchingBoard .matching-card').forEach(card=>{card.onclick=()=>{if(run!==memoryRun||matchingLocked||card.classList.contains('matched')||card===matchingFirst)return;card.classList.add('revealed');card.classList.remove('hidden-card');if(!matchingFirst){matchingFirst=card;return}const first=matchingFirst;const matched=first.dataset.pair===card.dataset.pair&&first.dataset.type!==card.dataset.type;if(matched){first.classList.add('matched');card.classList.add('matched');matchingMatched++;matchingFirst=null;if(matchingMatched===wordData.length)finishMemory(run,true,Math.max(0,(end-Date.now())/1000))}else{matchingLocked=true;setTimeout(()=>{if(run!==memoryRun)return;first.classList.remove('revealed');first.classList.add('hidden-card');card.classList.remove('revealed');card.classList.add('hidden-card');matchingFirst=null;matchingLocked=false},600)}}});tick();matchingTimerId=setInterval(tick,250)};
+  showMatchingResult=(success,remaining)=>{if(!document.getElementById('matching')?.classList.contains('show'))return;const left=Math.max(0,(matchingGameEndTime-Date.now())/1000);if(success&&matchingMatched<wordData.length)return;if(success&&left<=0)return finishMemory(memoryRun,false,0);if(!success&&left>0.5)return;return finishMemory(memoryRun,success,left)};
+})();
+</script>
+<script>
+(()=>{
   const lastMemoryResult=showMatchingResult;
   const key='wordsmon-memory-history';
   const nameOf=v=>String(v||'트레이너').trim().replace(/\s+/g,' ')||'트레이너';
@@ -968,23 +1079,26 @@ let lastBingoTokenOrder=[];const originalSetupBingoRandom=setupBingo;setupBingo=
   };
   showMatchingResult=(success,remaining)=>{
     const matchingVisible=document.getElementById('matching')?.classList.contains('show');
+    let effectiveRemaining=Math.max(0,Number(remaining)||0);
     if(matchingVisible){
       const complete=typeof matchingMatched==='number'&&Array.isArray(wordData)&&matchingMatched>=wordData.length;
-      const left=Math.max(0,Number(remaining)||0);
+      const actualRemaining=typeof matchingGameEndTime==='number'?Math.max(0,(matchingGameEndTime-Date.now())/1000):effectiveRemaining;
+      if(actualRemaining>0)effectiveRemaining=actualRemaining;
+      if(success&&actualRemaining<=0){success=false;effectiveRemaining=0}
       if(success&&!complete)return;
-      if(!success&&left>0.5)return;
+      if(!success&&actualRemaining>0.5)return;
     }
-    const result=finalMemoryResult(success,remaining);
+    const result=finalMemoryResult(success,effectiveRemaining);
     if(!matchingVisible)return result;
     setTimeout(async()=>{
       const box=document.querySelector('.result-overlay .result-box');
       if(!box)return;
-      const current={_current:true,trainer_name:cleanName(trainer),success:Boolean(success),remaining_seconds:Math.max(0,Math.round(Number(remaining)||0)),created_at:new Date().toISOString()};
+      const current={_current:true,trainer_name:cleanName(trainer),success:Boolean(success),remaining_seconds:Math.max(0,Math.ceil(effectiveRemaining)),created_at:new Date().toISOString()};
       let server=[];
       try{
-        const response=await fetch(`${SB_URL}/rest/v1/game_results?select=trainer_name,success,remaining_seconds,created_at,round_number&round_number=in.(2,3)&limit=1000`,{headers:{apikey:SB_KEY,Authorization:`Bearer ${SB_KEY}`}});
+        const response=await fetch(`${SB_URL}/rest/v1/game_results?select=trainer_name,success,remaining_seconds,created_at,round_number&round_number=eq.3&limit=1000`,{headers:{apikey:SB_KEY,Authorization:`Bearer ${SB_KEY}`}});
         const data=await response.json();
-        server=Array.isArray(data)?data.filter(row=>Number(row.round_number)===3||Number(row.remaining_seconds)>40):[];
+        server=Array.isArray(data)?data:[];
       }catch(error){}
       const ranked=rankRows([...server,...localRows(),current]);
       const list=box.querySelector('.ranking-list');
