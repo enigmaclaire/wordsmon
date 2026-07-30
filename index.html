@@ -172,6 +172,12 @@ let lastBingoTokenOrder=[];const originalSetupBingoRandom=setupBingo;setupBingo=
   };
 })();
 </script>
+<style>
+.winner-message{width:min(68vw,640px)!important;padding:14px 22px 16px!important}
+.winner-message .winner-trainer-image{display:none!important}
+.winner-message h2{font-size:clamp(1.25rem,2.8vw,2.15rem)!important}
+.winner-message p{font-size:clamp(.9rem,1.7vw,1.2rem)!important}
+</style>
 <script>
 (()=>{
   const previousMatchingResultForRanking=showMatchingResult;
@@ -541,7 +547,7 @@ let lastBingoTokenOrder=[];const originalSetupBingoRandom=setupBingo;setupBingo=
       let list=box.querySelector('.ranking-list');
       if(!list){list=document.createElement('div');list.className='ranking-list';box.appendChild(list)}
       try{
-        const response=await fetch(`${SB_URL}/rest/v1/game_results?select=trainer_name,success,remaining_seconds,created_at&round_number=eq.3&limit=1000`,{headers:{apikey:SB_KEY,Authorization:`Bearer ${SB_KEY}`}});
+        const response=await fetch(`${SB_URL}/rest/v1/game_results?select=trainer_name,success,remaining_seconds,created_at&round_number=in.(2,3)&limit=1000`,{headers:{apikey:SB_KEY,Authorization:`Bearer ${SB_KEY}`}});
         const rows=await response.json();
         const currentName=trainer||'트레이너';
         const currentSeconds=Math.max(0,Math.round(remaining));
@@ -588,7 +594,7 @@ let lastBingoTokenOrder=[];const originalSetupBingoRandom=setupBingo;setupBingo=
       };
       (async()=>{
         try{
-          const response=await fetch(`${SB_URL}/rest/v1/game_results?select=trainer_name,success,remaining_seconds,created_at&round_number=eq.3&limit=1000`,{headers:{apikey:SB_KEY,Authorization:`Bearer ${SB_KEY}`}});
+          const response=await fetch(`${SB_URL}/rest/v1/game_results?select=trainer_name,success,remaining_seconds,created_at&round_number=in.(2,3)&limit=1000`,{headers:{apikey:SB_KEY,Authorization:`Bearer ${SB_KEY}`}});
           const serverRows=await response.json();
           const rows=[...serverRows,...localHistory.filter(localRow=>!(localRow.trainer_name===currentRecord.trainer_name&&Boolean(localRow.success)===Boolean(currentRecord.success)&&Number(localRow.remaining_seconds)===Number(currentRecord.remaining_seconds)&&Math.abs(Date.parse(localRow.created_at||0)-Date.parse(currentRecord.created_at||0))<30000)&&!serverRows.some(serverRow=>serverRow.trainer_name===localRow.trainer_name&&Boolean(serverRow.success)===Boolean(localRow.success)&&Number(serverRow.remaining_seconds)===Number(localRow.remaining_seconds)&&Math.abs(Date.parse(serverRow.created_at||0)-Date.parse(localRow.created_at||0))<30000))];
           rows.push(currentRecord);
@@ -685,5 +691,22 @@ let lastBingoTokenOrder=[];const originalSetupBingoRandom=setupBingo;setupBingo=
       }catch(error){}
     })();
   };
+})();
+</script>
+<script>
+(()=>{
+  const winnerBackgroundByTrainer={boy:'assets/winner-boy.png',girl:'assets/winner-girl.png',bear:'assets/winner-bear.png',rabbit:'assets/winner-rabbit.png',panda:'assets/winner-panda.png'};
+  const applyChosenWinnerBackground=()=>{
+    const winner=document.querySelector('.winner-overlay');
+    if(!winner)return;
+    const selectedSrc=sessionStorage.getItem('wordsmon-selected-trainer')||document.getElementById('trainerImg')?.getAttribute('src')||'';
+    const key=Object.keys(winnerBackgroundByTrainer).find(name=>selectedSrc.includes('trainer-'+name));
+    const asset=winnerBackgroundByTrainer[key]||'assets/winner-background.png';
+    winner.style.setProperty('background-image',`url("${asset}")`,'important');
+    winner.style.setProperty('visibility','visible','important');
+  };
+  setInterval(applyChosenWinnerBackground,50);
+  new MutationObserver(applyChosenWinnerBackground).observe(document.body,{childList:true,subtree:true});
+  applyChosenWinnerBackground();
 })();
 </script>
