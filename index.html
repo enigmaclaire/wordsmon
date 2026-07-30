@@ -582,7 +582,7 @@ let lastBingoTokenOrder=[];const originalSetupBingoRandom=setupBingo;setupBingo=
       try{localHistory=JSON.parse(localStorage.getItem(historyKey)||'[]')}catch(error){localHistory=[]}
       localHistory.push({...currentRecord,_current:false});
       localStorage.setItem(historyKey,JSON.stringify(localHistory.slice(-1000)));
-      fetch(`${SB_URL}/rest/v1/game_results`,{method:'POST',headers:{apikey:SB_KEY,Authorization:`Bearer ${SB_KEY}`,'Content-Type':'application/json',Prefer:'return=minimal'},body:JSON.stringify({trainer_name:trainer||'트레이너',round_number:3,success:Boolean(success),remaining_seconds:Math.max(0,Math.round(remaining))})}).catch(()=>{});
+      await fetch(`${SB_URL}/rest/v1/game_results`,{method:'POST',headers:{apikey:SB_KEY,Authorization:`Bearer ${SB_KEY}`,'Content-Type':'application/json',Prefer:'return=minimal'},body:JSON.stringify({trainer_name:trainer||'트레이너',round_number:3,success:Boolean(success),remaining_seconds:Math.max(0,Math.round(remaining))})}).catch(()=>{});
       if(resultOverlay)resultOverlay.remove();
       resultOverlay=document.createElement('div');
       resultOverlay.className='result-overlay';
@@ -598,8 +598,9 @@ let lastBingoTokenOrder=[];const originalSetupBingoRandom=setupBingo;setupBingo=
       };
       (async()=>{
         try{
-          const response=await fetch(`${SB_URL}/rest/v1/game_results?select=trainer_name,success,remaining_seconds,created_at&round_number=eq.3&limit=1000`,{headers:{apikey:SB_KEY,Authorization:`Bearer ${SB_KEY}`}});
-          const serverRows=await response.json();
+          const response=await fetch(`${SB_URL}/rest/v1/game_results?select=trainer_name,success,remaining_seconds,created_at,round_number&round_number=in.(2,3)&limit=1000`,{headers:{apikey:SB_KEY,Authorization:`Bearer ${SB_KEY}`}});
+          const allServerRows=await response.json();
+          const serverRows=Array.isArray(allServerRows)?allServerRows.filter(row=>Number(row.round_number)===3||Number(row.remaining_seconds)>40):[];
           const rows=[...serverRows,...localHistory.filter(localRow=>!(localRow.trainer_name===currentRecord.trainer_name&&Boolean(localRow.success)===Boolean(currentRecord.success)&&Number(localRow.remaining_seconds)===Number(currentRecord.remaining_seconds)&&Math.abs(Date.parse(localRow.created_at||0)-Date.parse(currentRecord.created_at||0))<30000)&&!serverRows.some(serverRow=>serverRow.trainer_name===localRow.trainer_name&&Boolean(serverRow.success)===Boolean(localRow.success)&&Number(serverRow.remaining_seconds)===Number(localRow.remaining_seconds)&&Math.abs(Date.parse(serverRow.created_at||0)-Date.parse(localRow.created_at||0))<30000))];
           rows.push(currentRecord);
           rows.sort((a,b)=>(Number(b.success)-Number(a.success))||(Number(b.remaining_seconds)-Number(a.remaining_seconds))||(new Date(a.created_at)-new Date(b.created_at)));
