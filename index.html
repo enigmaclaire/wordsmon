@@ -277,8 +277,9 @@ let lastBingoTokenOrder=[];const originalSetupBingoRandom=setupBingo;setupBingo=
     const winner=document.querySelector('.winner-overlay');
     if(!winner){lastWinnerElement=null;lastWinnerAsset='';return}
     const selected=document.querySelector('.trainer-choice.selected');
+    const storedSrc=sessionStorage.getItem('wordsmon-selected-trainer')||'';
     const key=selected?.dataset.gender||'';
-    const src=selected?.querySelector('img')?.getAttribute('src')||'';
+    const src=storedSrc||selected?.querySelector('img')?.getAttribute('src')||'';
     const matched=Object.keys(winnerImages).find(name=>key===name||src.includes('trainer-'+name));
     const asset=winnerImages[matched]||'assets/winner-background.png';
     if(winner!==lastWinnerElement||asset!==lastWinnerAsset){
@@ -409,8 +410,10 @@ let lastBingoTokenOrder=[];const originalSetupBingoRandom=setupBingo;setupBingo=
   const syncWinnerTrainer=()=>{
     const winner=document.querySelector('.winner-overlay');
     if(!winner)return;
-    const selected=document.getElementById('trainerImg')?.getAttribute('src')||'';
-    const background=selected.includes('trainer-panda')?'assets/winner-panda.png':'assets/winner-background.png';
+    const selected=sessionStorage.getItem('wordsmon-selected-trainer')||document.getElementById('trainerImg')?.getAttribute('src')||'';
+    const backgroundMap={boy:'assets/winner-boy.png',girl:'assets/winner-girl.png',bear:'assets/winner-bear.png',rabbit:'assets/winner-rabbit.png',panda:'assets/winner-panda.png'};
+    const key=Object.keys(backgroundMap).find(name=>selected.includes('trainer-'+name));
+    const background=backgroundMap[key]||'assets/winner-background.png';
     winner.style.backgroundImage=`url("${background}")`;
   };
   new MutationObserver(syncWinnerTrainer).observe(document.body,{childList:true,subtree:true});
@@ -594,11 +597,14 @@ let lastBingoTokenOrder=[];const originalSetupBingoRandom=setupBingo;setupBingo=
       };
       (async()=>{
         try{
-          const response=await fetch(`${SB_URL}/rest/v1/game_results?select=trainer_name,success,remaining_seconds,created_at&round_number=in.(2,3)&limit=1000`,{headers:{apikey:SB_KEY,Authorization:`Bearer ${SB_KEY}`}});
+          const response=await fetch(`${SB_URL}/rest/v1/game_results?select=trainer_name,success,remaining_seconds,created_at&round_number=eq.3&limit=1000`,{headers:{apikey:SB_KEY,Authorization:`Bearer ${SB_KEY}`}});
           const serverRows=await response.json();
           const rows=[...serverRows,...localHistory.filter(localRow=>!(localRow.trainer_name===currentRecord.trainer_name&&Boolean(localRow.success)===Boolean(currentRecord.success)&&Number(localRow.remaining_seconds)===Number(currentRecord.remaining_seconds)&&Math.abs(Date.parse(localRow.created_at||0)-Date.parse(currentRecord.created_at||0))<30000)&&!serverRows.some(serverRow=>serverRow.trainer_name===localRow.trainer_name&&Boolean(serverRow.success)===Boolean(localRow.success)&&Number(serverRow.remaining_seconds)===Number(localRow.remaining_seconds)&&Math.abs(Date.parse(serverRow.created_at||0)-Date.parse(localRow.created_at||0))<30000))];
           rows.push(currentRecord);
           rows.sort((a,b)=>(Number(b.success)-Number(a.success))||(Number(b.remaining_seconds)-Number(a.remaining_seconds))||(new Date(a.created_at)-new Date(b.created_at)));
+          const seenNames=new Set();
+          const uniqueRows=rows.filter(row=>{const name=String(row.trainer_name||'').trim();if(seenNames.has(name))return false;seenNames.add(name);return true});
+          rows.length=0; rows.push(...uniqueRows);
           const box=resultOverlay.querySelector('.result-box');
           box.querySelector('.ranking-list').innerHTML=rows.slice(0,5).map((row,index)=>`<div>${index+1}. ${row.trainer_name} <span>${row.success?'성공':'실패'} · ${row.remaining_seconds}초</span></div>`).join('');
           box.querySelector('.live-rank').textContent=`${trainer||'트레이너'} 트레이너님은 현재 ${rows.findIndex(row=>row._current)+1}위입니다.`;
