@@ -36,6 +36,38 @@
 </script>
 <script>
 (()=>{
+  const dedupeBingoRanking=async()=>{
+    const box=document.querySelector('.result-overlay .result-box');
+    if(!box||box.dataset.bingoRankingFixed)return;
+    if(document.getElementById('matching')?.classList.contains('show'))return;
+    if(typeof activeRound!=='number'||(activeRound!==1&&activeRound!==2))return;
+    const list=box.querySelector('.ranking-list');if(!list)return;
+    box.dataset.bingoRankingFixed='1';
+    const currentName=String(typeof trainer==='string'?trainer:'트레이너').trim()||'트레이너';
+    const title=box.querySelector('h2')?.textContent||'';
+    const currentSuccess=!title.includes('실패');
+    const timeText=box.querySelector('.result-time')?.textContent||'';
+    const currentSeconds=Number((timeText.match(/(\d+)\s*초/)||[])[1]||0);
+    try{
+      const response=await fetch(`${SB_URL}/rest/v1/game_results?select=trainer_name,success,remaining_seconds,created_at&round_number=eq.${activeRound}&limit=1000`,{headers:{apikey:SB_KEY,Authorization:`Bearer ${SB_KEY}`}});
+      const data=await response.json();
+      const byName=new Map();
+      [...(Array.isArray(data)?data:[]),{trainer_name:currentName,success:currentSuccess,remaining_seconds:currentSeconds,created_at:new Date().toISOString(),_current:true}].forEach(raw=>{
+        const row={...raw,trainer_name:String(raw.trainer_name||'트레이너').trim(),success:Boolean(raw.success),remaining_seconds:Math.max(0,Number(raw.remaining_seconds)||0)};
+        const old=byName.get(row.trainer_name);
+        if(!old||Number(row.success)>Number(old.success)||(Number(row.success)===Number(old.success)&&row.remaining_seconds>old.remaining_seconds))byName.set(row.trainer_name,row);
+      });
+      const rows=[...byName.values()].sort((a,b)=>(Number(b.success)-Number(a.success))||(b.remaining_seconds-a.remaining_seconds));
+      list.innerHTML=rows.slice(0,5).map((row,index)=>`<div>${index+1}. ${row.trainer_name} <span>${row.success?'성공':'실패'} · ${Math.round(row.remaining_seconds)}초</span></div>`).join('')||'아직 기록이 없어요';
+      const live=box.querySelector('.live-rank');if(live)live.textContent=`${currentName} 트레이너님은 현재 ${Math.max(1,rows.findIndex(row=>row.trainer_name===currentName)+1)}위입니다.`;
+    }catch(error){box.dataset.bingoRankingFixed=''}
+  };
+  const observer=new MutationObserver(()=>setTimeout(dedupeBingoRanking,350));
+  observer.observe(document.body,{childList:true,subtree:true});
+})();
+</script>
+<script>
+(()=>{
   // 메모리게임은 빙고 로직과 분리된 단일 실행 경로를 사용합니다.
   let memoryRun=0;
   const memoryKey='wordsmon-memory-history';
