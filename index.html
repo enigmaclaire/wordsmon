@@ -92,7 +92,7 @@ const steadyTimerStyle=document.createElement('style');steadyTimerStyle.textCont
 const freeFlightStyle=document.createElement('style');freeFlightStyle.textContent='.game .shell{overflow:visible}.game .choices{width:calc(100% + 30vw);margin-left:-15vw;overflow:visible;z-index:10}.game .choice{z-index:20;isolation:isolate;filter:drop-shadow(0 9px 5px rgba(35,90,55,.35))}.game .question{z-index:30}.game .game-head{z-index:25}';document.head.appendChild(freeFlightStyle);
 const gameBackgrounds=['game-beach.png','game-bedroom.png','game-cave.png','game-classroom.png','game-forest-cabin.png','game-hallway.png','game-kitchen.png','game-lake2.png','game-library.png','game-livingroom.png','game-neighborhood.png','game-park.png','game-schoolyard.png','game-statue-park.png','game-suburb.png'];let lastGameBackground='';const renderWithBackground=render;render=function(){renderWithBackground();let choices=gameBackgrounds.filter(x=>x!==lastGameBackground);lastGameBackground=choices[Math.floor(Math.random()*choices.length)];$('game').style.backgroundImage=`url('assets/${lastGameBackground}')`};
 const bingoTitleFitStyle=document.createElement('style');bingoTitleFitStyle.textContent='.bingo .bingo-title{padding-top:8px;padding-bottom:8px;line-height:1.05;transform:translateY(4px)}';document.head.appendChild(bingoTitleFitStyle);
-function bingoLineCount(){const open=[...document.querySelectorAll('#battleBoard .cell')].map((c,i)=>c.classList.contains('open'));const lines=[[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];return lines.filter(line=>line.every(i=>open[i])).length}document.addEventListener('click',e=>{const c=e.target.closest('#battleBoard .cell');if(!c||!$('battle').classList.contains('show')||typeof battleFinished!=='undefined'&&battleFinished)return;e.preventDefault();e.stopImmediatePropagation();const expected=window.currentBattleAnswer??placed[battleIndex];if(Number(c.dataset.i)!==Number(expected))return;c.classList.add('open');battleIndex++;if(bingoLineCount()>=3){const m=$('timer').textContent.match(/0:(\d+)/);finishBattle(true,m?Number(m[1]):0)}else nextBattleQuestion()},true);
+function bingoLineCount(){const open=[...document.querySelectorAll('#battleBoard .cell')].map((c,i)=>c.classList.contains('open'));const lines=[[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];return lines.filter(line=>line.every(i=>open[i])).length}document.addEventListener('click',e=>{const c=e.target.closest('#battleBoard .cell');if(!c||!$('battle').classList.contains('show')||typeof battleFinished!=='undefined'&&battleFinished)return;e.preventDefault();e.stopImmediatePropagation();const expected=window.currentBattleAnswer??placed[battleIndex];if(window.audioPlay)window.audioPlay(Number(c.dataset.i)===Number(expected)?'correct':'wrong');if(Number(c.dataset.i)!==Number(expected))return;c.classList.add('open');battleIndex++;if(bingoLineCount()>=3){const m=$('timer').textContent.match(/0:(\d+)/);finishBattle(true,m?Number(m[1]):0)}else nextBattleQuestion()},true);
 const ballAlignStyle=document.createElement('style');ballAlignStyle.textContent='.game .ball{position:absolute;overflow:visible;background:linear-gradient(#f65c57 0 46%,#36474c 46% 54%,#fff 54%);isolation:isolate}.game .ball:before{left:-2px;top:-2px;width:calc(100% + 4px);height:52%;box-sizing:border-box;transform-origin:50% 100%;backface-visibility:hidden}.game .ball:after{left:50%;top:50%;transform:translate(-50%,-50%);box-sizing:border-box}.game .ball.open:after{transform:translate(-50%,-50%) scale(1.8)}.game .ball.open:before{animation:lidOpenVisible .8s cubic-bezier(.2,.8,.2,1) forwards}@keyframes lidOpenVisible{0%{transform:translateY(0) rotate(0) rotateX(0)}35%{transform:translateY(-18px) translateX(8px) rotate(-10deg) rotateX(35deg)}70%{transform:translateY(-34px) translateX(16px) rotate(-18deg) rotateX(65deg)}100%{transform:translateY(-28px) translateX(12px) rotate(-15deg) rotateX(58deg)}}';document.head.appendChild(ballAlignStyle);
 const timerMonsterFix=document.createElement('style');timerMonsterFix.textContent='.battle .timer:before{transform-origin:left center}.battle .timer:after{content:"👾"}';document.head.appendChild(timerMonsterFix);setInterval(()=>{const t=$('timer');if(t&&t.clientWidth){const scale=Math.max(0,Math.min(1,parseFloat(getComputedStyle(t).getPropertyValue('--time-scale'))||0));t.style.setProperty('--monster-x',`${14+(t.clientWidth-119)*(1-scale)}px`)}},100);
 const startLayoutFinal=document.createElement('style');startLayoutFinal.textContent='.start .logo-img{margin-top:1cm}.start .tagline{font-size:clamp(2.6rem,7.6vw,4.2rem);padding:12px 28px}.start .trainer{left:calc(-7cm - 40px);width:calc(350px + 2cm);bottom:-220px}.start .trainer-main{height:380px}.start .trainer-main img{height:380px;max-width:92%}.start .trainer-options{margin-top:2px}.start .trainer-choice img{height:92px}.start .start-monster{filter:drop-shadow(0 0 18px #fff) drop-shadow(0 7px 3px #467c50)}.start .m1{left:7%;top:0;width:145px}.start .m2{left:28%;top:9%;width:100px}.start .m3{left:49%;top:0;width:82px}.start .m4{right:6%;left:auto;bottom:0;width:135px}.start .m5{right:22%;top:43%;width:105px}.start .m6{right:12%;top:-30%;width:110px}.start .friend:nth-child(1){width:145px}.start .friend:nth-child(2){width:215px}.start .friend:nth-child(3){width:165px}';document.head.appendChild(startLayoutFinal);
@@ -173,7 +173,8 @@ let lastBingoTokenOrder=[];const originalSetupBingoRandom=setupBingo;setupBingo=
 })();
 </script>
 <style>
-.winner-message{width:min(68vw,640px)!important;padding:14px 22px 16px!important}
+.winner-message{width:min(68vw,720px)!important;padding:14px 22px 16px!important}
+.winner-message{min-height:220px!important;box-sizing:border-box;display:flex;flex-direction:column;justify-content:center}
 .winner-message .winner-trainer-image{display:none!important}
 .winner-message h2{font-size:clamp(1.25rem,2.8vw,2.15rem)!important}
 .winner-message p{font-size:clamp(.9rem,1.7vw,1.2rem)!important}
@@ -714,5 +715,80 @@ let lastBingoTokenOrder=[];const originalSetupBingoRandom=setupBingo;setupBingo=
   setInterval(applyChosenWinnerBackground,50);
   new MutationObserver(applyChosenWinnerBackground).observe(document.body,{childList:true,subtree:true});
   applyChosenWinnerBackground();
+})();
+</script>
+<style>
+.audio-controls{position:fixed;right:16px;top:16px;z-index:120;display:flex;align-items:center;gap:8px;padding:8px 10px;border:2px solid #fff;border-radius:18px;background:#31596dcc;box-shadow:0 4px 12px #173c4c66}
+.audio-controls button{border:0;border-radius:13px;padding:6px 9px;background:#fff;color:#31596d;font-size:1rem;cursor:pointer}
+.audio-controls input{width:88px;accent-color:#ffd24d;cursor:pointer}
+.bingo .round,.battle .round{right:190px!important;top:16px!important;z-index:121!important}
+@media(max-width:600px){.audio-controls{right:8px;top:8px;padding:5px 7px}.audio-controls input{width:65px}.bingo .round,.battle .round{right:116px!important;top:8px!important;font-size:1rem!important;padding:7px 10px!important}}
+</style>
+<script>
+(()=>{
+  const audioFiles={bgm:'assets/audio/bgm.mp3',capture:'assets/audio/capture.mp3',click:'assets/audio/click.wav',correct:'assets/audio/correct.wav',fail:'assets/audio/fail.wav',success:'assets/audio/success.wav',winner:'assets/audio/winner.wav',wrong:'assets/audio/wrong.wav'};
+  const bgm=new Audio(audioFiles.bgm);bgm.loop=true;bgm.preload='auto';
+  const sounds=Object.fromEntries(Object.entries(audioFiles).filter(([key])=>key!=='bgm').map(([key,src])=>[key,new Audio(src)]));
+  let volume=Number(localStorage.getItem('wordsmon-volume')||'0.55');
+  let muted=localStorage.getItem('wordsmon-muted')==='true';
+  const applyAudioState=()=>{bgm.volume=muted?0:volume;Object.values(sounds).forEach(audio=>audio.volume=muted?0:volume)};
+  const play=(name)=>{const audio=name==='bgm'?bgm:sounds[name];if(!audio)return;applyAudioState();if(name!=='bgm')audio.currentTime=0;audio.play().catch(()=>{})};
+  window.audioPlay=play;
+  const startBgm=()=>{if(bgm.paused)play('bgm')};
+  const playWinner=()=>{bgm.pause();bgm.currentTime=0;const audio=sounds.winner;if(!audio)return;audio.volume=muted?0:Math.min(1,volume*1.45);audio.currentTime=0;audio.play().catch(()=>{})};
+  const controls=document.createElement('div');controls.className='audio-controls';controls.innerHTML='<button type="button" class="audio-mute" aria-label="음악 끄기">🔊</button><input class="audio-volume" type="range" min="0" max="1" step="0.05" aria-label="소리 크기">';document.body.appendChild(controls);
+  const muteButton=controls.querySelector('.audio-mute');const volumeInput=controls.querySelector('.audio-volume');volumeInput.value=String(volume);
+  const updateMute=()=>{muteButton.textContent=muted?'🔇':'🔊';muteButton.setAttribute('aria-label',muted?'음악 켜기':'음악 끄기');applyAudioState()};
+  muteButton.onclick=()=>{muted=!muted;localStorage.setItem('wordsmon-muted',String(muted));updateMute()};
+  volumeInput.oninput=()=>{volume=Number(volumeInput.value);localStorage.setItem('wordsmon-volume',String(volume));if(volume>0&&muted){muted=false;localStorage.setItem('wordsmon-muted','false')}updateMute()};
+  updateMute();
+  document.addEventListener('pointerdown',event=>{if(!event.target.closest('.audio-controls'))startBgm()},{capture:true});
+  document.addEventListener('click',event=>{
+    const target=event.target.closest('button');if(!target||target.closest('.audio-controls'))return;
+    if(target.matches('.result-view')){bgm.pause();bgm.currentTime=0;playWinner();return}
+    if(target.matches('.choice[data-c="1"]'))play('capture');
+    else if(target.matches('.choice'))play('wrong');
+    else if(target.matches('#battleBoard .cell')){const expected=window.currentBattleAnswer??window.battleIndex;play(Number(target.dataset.i)===Number(expected)?'correct':'wrong')}
+    else if(target.matches('.matching-card')){
+      if(target.classList.contains('matched'))return;
+      if(!matchingAudioFirst){matchingAudioFirst=target;play('click')}
+      else if(target===matchingAudioFirst){return}
+      else{const matched=matchingAudioFirst.dataset.pair===target.dataset.pair&&matchingAudioFirst.dataset.type!==target.dataset.type;play(matched?'correct':'wrong');matchingAudioFirst=null}
+    }
+    else play('click');
+  },true);
+  let matchingAudioFirst=null,winnerPlayed=false,successPlayed=false,resultSoundState='';
+  const watchAudioScreens=()=>{
+    const winner=document.querySelector('.winner-overlay');
+    if(winner&&!winnerPlayed){winnerPlayed=true;playWinner()}
+    if(!winner)winnerPlayed=false;
+    const complete=document.querySelector('.complete.show');
+    if(complete&&!successPlayed){successPlayed=true;bgm.pause();bgm.currentTime=0;play('success')}
+    if(!complete)successPlayed=false;
+    const resultTitle=document.querySelector('.result-overlay .result-box h2');
+    if(resultTitle){const text=resultTitle.textContent||'';const state=/실패/.test(text)?'fail':/성공|완성|승리/.test(text)?'success':'';if(state&&state!==resultSoundState){bgm.pause();bgm.currentTime=0;state==='success'?play('success'):play('fail');resultSoundState=state}}
+    else resultSoundState='';
+  };
+  new MutationObserver(watchAudioScreens).observe(document.body,{childList:true,subtree:true,attributes:true,attributeFilter:['class']});
+  setInterval(watchAudioScreens,250);
+})();
+</script>
+<style>
+.result-box.round1-compact{padding-top:20px!important;padding-bottom:20px!important}
+.result-box.round1-compact .live-rank{display:none!important}
+.result-box.round1-compact .ranking-title{margin-top:10px!important}
+</style>
+<script>
+(()=>{
+  const compactRoundOneResult=()=>{
+    document.querySelectorAll('.result-overlay .result-box').forEach(box=>{
+      const isRoundOne=typeof activeRound!=='undefined'&&activeRound===1&&box.querySelector('.result-round2');
+      if(!isRoundOne)return;
+      box.classList.add('round1-compact');
+      box.querySelector('.live-rank')?.remove();
+    });
+  };
+  new MutationObserver(compactRoundOneResult).observe(document.body,{childList:true,subtree:true});
+  setInterval(compactRoundOneResult,250);
 })();
 </script>
