@@ -19,6 +19,118 @@
 .start-monsters{position:absolute;inset:0;pointer-events:none}.m1{left:9%;top:2%;width:135px}.m2{left:31%;top:7%;width:115px}.m3{left:50%;top:1%;width:90px}.m4{left:48%;right:auto;bottom:-2%;width:110px}.m5{right:18%;top:46%;width:115px}.m6{right:3%;top:4%;width:100px}
 </style></head>
 <body>
+<div id="introOverlay" aria-label="WordsMon GO 인트로"><iframe src="assets/wordsmon-intro.html" title="WordsMon GO 인트로"></iframe></div>
+<style>
+  #introOverlay{position:fixed;inset:0;z-index:1000;background:#18223f;}
+  #introOverlay iframe{display:block;width:100%;height:100%;border:0;}
+  #introOverlay.is-hidden{display:none;}
+</style>
+<script>
+  window.addEventListener('message',event=>{
+    if(event.source!==document.querySelector('#introOverlay iframe')?.contentWindow)return;
+    if(event.data?.type==='wordsmon-intro-skip'||event.data?.type==='wordsmon-intro-finished'){
+      document.getElementById('introOverlay')?.classList.add('is-hidden');
+      document.getElementById('name')?.focus();
+    }
+  });
+</script>
+<script>
+(()=>{
+  const finalMemoryResult=showMatchingResult;
+  const memoryHistoryKey='wordsmon-memory-history';
+  const cleanName=value=>String(value||'트레이너').trim().replace(/\s+/g,' ')||'트레이너';
+  const localRows=()=>{try{const rows=JSON.parse(localStorage.getItem(memoryHistoryKey)||'[]');return Array.isArray(rows)?rows:[]}catch(error){return[]}};
+  const rankRows=rows=>{
+    const byName=new Map();
+    rows.forEach(raw=>{
+      const row={...raw,trainer_name:cleanName(raw.trainer_name),success:Boolean(raw.success),remaining_seconds:Math.max(0,Number(raw.remaining_seconds)||0),created_at:raw.created_at||new Date().toISOString()};
+      const old=byName.get(row.trainer_name);
+      if(!old||Number(row.success)>Number(old.success)||(Number(row.success)===Number(old.success)&&row.remaining_seconds>old.remaining_seconds))byName.set(row.trainer_name,row);
+    });
+    return [...byName.values()].sort((a,b)=>(Number(b.success)-Number(a.success))||(b.remaining_seconds-a.remaining_seconds)||(new Date(a.created_at)-new Date(b.created_at)));
+  };
+  showMatchingResult=(success,remaining)=>{
+    const matchingVisible=document.getElementById('matching')?.classList.contains('show');
+    let effectiveRemaining=Math.max(0,Number(remaining)||0);
+    if(matchingVisible){
+      const complete=typeof matchingMatched==='number'&&Array.isArray(wordData)&&matchingMatched>=wordData.length;
+      const actualRemaining=typeof matchingGameEndTime==='number'?Math.max(0,(matchingGameEndTime-Date.now())/1000):effectiveRemaining;
+      if(actualRemaining>0&&effectiveRemaining<=0)effectiveRemaining=actualRemaining;
+      if(actualRemaining<=0&&success){success=false;effectiveRemaining=0}
+      if(success&&!complete)return;
+      if(!success&&actualRemaining>0.5)return;
+    }
+    const result=finalMemoryResult(success,effectiveRemaining);
+    if(!matchingVisible)return result;
+    setTimeout(async()=>{
+      const box=document.querySelector('.result-overlay .result-box');
+      if(!box)return;
+      const current={_current:true,trainer_name:cleanName(trainer),success:Boolean(success),remaining_seconds:Math.max(0,Math.ceil(effectiveRemaining)),created_at:new Date().toISOString()};
+      let server=[];
+      try{
+        const response=await fetch(`${SB_URL}/rest/v1/game_results?select=trainer_name,success,remaining_seconds,created_at,round_number&round_number=eq.3&limit=1000`,{headers:{apikey:SB_KEY,Authorization:`Bearer ${SB_KEY}`}});
+        const data=await response.json();
+        server=Array.isArray(data)?data:[];
+      }catch(error){}
+      const ranked=rankRows([...server,...localRows(),current]);
+      const list=box.querySelector('.ranking-list');
+      if(list)list.innerHTML=ranked.slice(0,5).map((row,index)=>`<div>${index+1}. ${row.trainer_name} <span>${row.success?'성공':'실패'} · ${Math.round(row.remaining_seconds)}초</span></div>`).join('')||'아직 기록이 없어요';
+      const live=box.querySelector('.live-rank');
+      if(live)live.textContent=`${current.trainer_name} 트레이너님은 현재 ${Math.max(1,ranked.findIndex(row=>row.trainer_name===current.trainer_name)+1)}위입니다.`;
+    },100);
+    return result;
+  };
+})();
+</script>
+<script>
+(()=>{
+  // 메모리 게임의 성공/실패와 순위를 마지막 단계에서 일관되게 보정합니다.
+  const previousMemoryResult=showMatchingResult;
+  const memoryHistoryKey='wordsmon-memory-history';
+  const normaliseMemoryName=value=>String(value||'트레이너').trim().replace(/\s+/g,' ')||'트레이너';
+  const readMemoryHistory=()=>{try{const value=JSON.parse(localStorage.getItem(memoryHistoryKey)||'[]');return Array.isArray(value)?value:[]}catch(error){return[]}};
+  const rankMemoryRows=rows=>{
+    const bestByName=new Map();
+    for(const raw of rows){
+      const row={...raw,trainer_name:normaliseMemoryName(raw.trainer_name),success:Boolean(raw.success),remaining_seconds:Math.max(0,Number(raw.remaining_seconds)||0),created_at:raw.created_at||new Date().toISOString()};
+      const old=bestByName.get(row.trainer_name);
+      if(!old||Number(row.success)>Number(old.success)||(Number(row.success)===Number(old.success)&&row.remaining_seconds>old.remaining_seconds))bestByName.set(row.trainer_name,row);
+    }
+    const ranked=[...bestByName.values()];
+    ranked.sort((a,b)=>(Number(b.success)-Number(a.success))||(b.remaining_seconds-a.remaining_seconds)||(new Date(a.created_at)-new Date(b.created_at)));
+    return ranked;
+  };
+  showMatchingResult=(success,remaining)=>{
+    const isMatching=document.getElementById('matching')?.classList.contains('show');
+    if(isMatching){
+      const complete=typeof matchingMatched==='number'&&Array.isArray(wordData)&&matchingMatched>=wordData.length;
+      const timeLeft=Math.max(0,Number(remaining)||0);
+      if(success&&!complete)return;
+      if(!success&&timeLeft>0.5)return;
+    }
+    const result=previousMemoryResult(success,remaining);
+    if(!isMatching)return result;
+    setTimeout(async()=>{
+      const box=document.querySelector('.result-overlay .result-box');
+      if(!box)return;
+      const list=box.querySelector('.ranking-list');
+      const rankText=box.querySelector('.live-rank');
+      const current={_current:true,trainer_name:normaliseMemoryName(trainer),success:Boolean(success),remaining_seconds:Math.max(0,Math.round(Number(remaining)||0)),created_at:new Date().toISOString()};
+      let serverRows=[];
+      try{
+        const response=await fetch(`${SB_URL}/rest/v1/game_results?select=trainer_name,success,remaining_seconds,created_at,round_number&round_number=in.(2,3)&limit=1000`,{headers:{apikey:SB_KEY,Authorization:`Bearer ${SB_KEY}`}});
+        const data=await response.json();
+        serverRows=Array.isArray(data)?data.filter(row=>Number(row.round_number)===3||Number(row.remaining_seconds)>40):[];
+      }catch(error){}
+      const rows=rankMemoryRows([...serverRows,...readMemoryHistory(),current]);
+      const currentRank=rows.findIndex(row=>row.trainer_name===current.trainer_name)+1;
+      if(list)list.innerHTML=rows.slice(0,5).map((row,index)=>`<div>${index+1}. ${row.trainer_name} <span>${row.success?'성공':'실패'} · ${Math.round(row.remaining_seconds)}초</span></div>`).join('')||'아직 기록이 없어요';
+      if(rankText)rankText.textContent=`${current.trainer_name} 트레이너님은 현재 ${currentRank||'-'}위입니다.`;
+    },100);
+    return result;
+  };
+})();
+</script>
 <main id="teacher" class="teacher"><div class="teacher-box"><h1>WordsMon GO! 교사용 단어 관리</h1><p>CSV 형식: 정답,뜻,페이지,오답1,오답2</p><textarea id="teacherText"></textarea><input id="csv" type="file" accept=".csv,text/csv"><button class="teacher-save" id="save">단어 저장</button><button class="teacher-reset" id="reset">기본 단어</button></div></main>
 <main id="start" class="screen start"><div class="start-inner"><img class="logo-img" src="assets/wordsmongo-logo-line.png"><p class="tagline">교과서에서 찾은 단어 몬스터를 잡아봐요!</p><div class="stage"><div class="start-monsters"><img class="start-monster m1" src="assets/monsters/fire.png"><img class="start-monster m2" src="assets/monsters/ghost.png"><img class="start-monster m3" src="assets/monsters/hedgehog.png"><img class="start-monster m4" src="assets/monsters/fish.png"><img class="start-monster m5" src="assets/monsters/cat.png"><img class="start-monster m6" src="assets/monsters/bee.png"></div><div class="trainer"><div class="trainer-main"><img id="trainerImg" src="assets/trainer-boy.png"></div><div class="trainer-options"><button class="trainer-choice selected" data-gender="boy"><img src="assets/trainer-boy.png">남자</button><button class="trainer-choice" data-gender="girl"><img src="assets/trainer-girl.png">여자</button></div></div><div class="friends"><img class="friend" src="assets/monsters/leaf.png"><img class="friend" src="assets/monsters/bear.png"><img class="friend" src="assets/monsters/flame.png"></div></div><form id="form" class="start-form"><label for="name">트레이너 이름</label><input id="name" placeholder="이름을 적어주세요" maxlength="12"><p class="hint">트레이너의 실제 이름을 바르게 적어주세요</p><button class="start-btn">WordsMon을 잡으러 출발!</button></form></div></main>
 <main id="game" class="screen game"><div class="shell"><header class="game-head"><img class="game-logo" src="assets/wordsmongo-logo-line.png"><div class="title-badge">단어 몬스터를 잡아라!</div><div id="count" class="progress">0 / 9 잡음</div></header><section class="question"><small>아래의 뜻을 가진 단어 몬스터를 잡으세요!</small><div id="meaning" class="meaning"></div><div id="page" class="page"></div></section><div id="choices" class="choices"></div><div id="feedback" class="feedback"></div><div id="ball" class="ball"></div></div></main>
@@ -574,7 +686,7 @@ let lastBingoTokenOrder=[];const originalSetupBingoRandom=setupBingo;setupBingo=
 <script>
 (()=>{
   const directMemoryResult=()=>{
-    showMatchingResult=(success,remaining)=>{
+    showMatchingResult=async(success,remaining)=>{
       if(typeof matchingScreen!=='undefined'&&!matchingScreen.classList.contains('show'))return;
       const currentRecord={_current:true,trainer_name:trainer||'트레이너',success:Boolean(success),remaining_seconds:Math.max(0,Math.round(remaining)),created_at:new Date().toISOString()};
       const historyKey='wordsmon-memory-history';
@@ -723,7 +835,9 @@ let lastBingoTokenOrder=[];const originalSetupBingoRandom=setupBingo;setupBingo=
 .audio-controls button{border:0;border-radius:13px;padding:6px 9px;background:#fff;color:#31596d;font-size:1rem;cursor:pointer}
 .audio-controls input{width:88px;accent-color:#ffd24d;cursor:pointer}
 .bingo .round,.battle .round{right:190px!important;top:30px!important;z-index:121!important}
-@media(max-width:600px){.audio-controls{right:8px;top:8px;padding:5px 7px}.audio-controls input{width:65px}.bingo .round,.battle .round{right:116px!important;top:8px!important;font-size:1rem!important;padding:7px 10px!important}}
+.game .progress{transform:translateX(-115px)!important}
+.matching-head #matchingTimer{transform:translateX(-145px)!important}
+@media(max-width:600px){.audio-controls{right:8px;top:8px;padding:5px 7px}.audio-controls input{width:65px}.game .progress{transform:translateX(-65px)!important}.matching-head #matchingTimer{transform:translateX(-72px)!important}.bingo .round,.battle .round{right:116px!important;top:8px!important;font-size:1rem!important;padding:7px 10px!important}}
 </style>
 <script>
 (()=>{
@@ -791,5 +905,94 @@ let lastBingoTokenOrder=[];const originalSetupBingoRandom=setupBingo;setupBingo=
   };
   new MutationObserver(compactRoundOneResult).observe(document.body,{childList:true,subtree:true});
   setInterval(compactRoundOneResult,250);
+})();
+</script>
+<script>
+(()=>{
+  const lastMemoryResult=showMatchingResult;
+  const key='wordsmon-memory-history';
+  const nameOf=v=>String(v||'트레이너').trim().replace(/\s+/g,' ')||'트레이너';
+  const history=()=>{try{const v=JSON.parse(localStorage.getItem(key)||'[]');return Array.isArray(v)?v:[]}catch(e){return[]}};
+  showMatchingResult=(success,remaining)=>{
+    const visible=document.getElementById('matching')?.classList.contains('show');
+    let left=Math.max(0,Number(remaining)||0);
+    if(visible){
+      const actual=typeof matchingGameEndTime==='number'?Math.max(0,(matchingGameEndTime-Date.now())/1000):left;
+      if(actual>0&&left<=0)left=actual;
+      if(success&&actual<=0)success=false,left=0;
+      if(success&&!(typeof matchingMatched==='number'&&matchingMatched>=wordData.length))return;
+      if(!success&&actual>0.5)return;
+    }
+    const result=lastMemoryResult(success,left);
+    if(!visible)return result;
+    setTimeout(async()=>{
+      const box=document.querySelector('.result-overlay .result-box');
+      if(!box)return;
+      const current={trainer_name:nameOf(trainer),success:Boolean(success),remaining_seconds:Math.ceil(left),created_at:new Date().toISOString()};
+      let server=[];
+      try{
+        const response=await fetch(`${SB_URL}/rest/v1/game_results?select=trainer_name,success,remaining_seconds,created_at&round_number=eq.3&limit=1000`,{headers:{apikey:SB_KEY,Authorization:`Bearer ${SB_KEY}`}});
+        const data=await response.json();
+        server=Array.isArray(data)?data:[];
+      }catch(e){}
+      const byName=new Map();
+      [...server,...history(),current].forEach(raw=>{
+        const row={...raw,trainer_name:nameOf(raw.trainer_name),success:Boolean(raw.success),remaining_seconds:Math.max(0,Number(raw.remaining_seconds)||0)};
+        const old=byName.get(row.trainer_name);
+        if(!old||Number(row.success)>Number(old.success)||(Number(row.success)===Number(old.success)&&row.remaining_seconds>old.remaining_seconds))byName.set(row.trainer_name,row);
+      });
+      const rows=[...byName.values()].sort((a,b)=>(Number(b.success)-Number(a.success))||(b.remaining_seconds-a.remaining_seconds));
+      const list=box.querySelector('.ranking-list');
+      if(list)list.innerHTML=rows.slice(0,5).map((row,i)=>`<div>${i+1}. ${row.trainer_name} <span>${row.success?'성공':'실패'} · ${Math.round(row.remaining_seconds)}초</span></div>`).join('')||'아직 기록이 없어요';
+      const live=box.querySelector('.live-rank');
+      if(live)live.textContent=`${current.trainer_name} 트레이너님은 현재 ${Math.max(1,rows.findIndex(row=>row.trainer_name===current.trainer_name)+1)}위입니다.`;
+    },120);
+    return result;
+  };
+})();
+</script>
+<script>
+(()=>{
+  const finalMemoryResult=showMatchingResult;
+  const memoryHistoryKey='wordsmon-memory-history';
+  const cleanName=value=>String(value||'트레이너').trim().replace(/\s+/g,' ')||'트레이너';
+  const localRows=()=>{try{const rows=JSON.parse(localStorage.getItem(memoryHistoryKey)||'[]');return Array.isArray(rows)?rows:[]}catch(error){return[]}};
+  const rankRows=rows=>{
+    const byName=new Map();
+    rows.forEach(raw=>{
+      const row={...raw,trainer_name:cleanName(raw.trainer_name),success:Boolean(raw.success),remaining_seconds:Math.max(0,Number(raw.remaining_seconds)||0),created_at:raw.created_at||new Date().toISOString()};
+      const old=byName.get(row.trainer_name);
+      if(!old||Number(row.success)>Number(old.success)||(Number(row.success)===Number(old.success)&&row.remaining_seconds>old.remaining_seconds))byName.set(row.trainer_name,row);
+    });
+    return [...byName.values()].sort((a,b)=>(Number(b.success)-Number(a.success))||(b.remaining_seconds-a.remaining_seconds)||(new Date(a.created_at)-new Date(b.created_at)));
+  };
+  showMatchingResult=(success,remaining)=>{
+    const matchingVisible=document.getElementById('matching')?.classList.contains('show');
+    if(matchingVisible){
+      const complete=typeof matchingMatched==='number'&&Array.isArray(wordData)&&matchingMatched>=wordData.length;
+      const left=Math.max(0,Number(remaining)||0);
+      if(success&&!complete)return;
+      if(!success&&left>0.5)return;
+    }
+    const result=finalMemoryResult(success,remaining);
+    if(!matchingVisible)return result;
+    setTimeout(async()=>{
+      const box=document.querySelector('.result-overlay .result-box');
+      if(!box)return;
+      const current={_current:true,trainer_name:cleanName(trainer),success:Boolean(success),remaining_seconds:Math.max(0,Math.round(Number(remaining)||0)),created_at:new Date().toISOString()};
+      let server=[];
+      try{
+        const response=await fetch(`${SB_URL}/rest/v1/game_results?select=trainer_name,success,remaining_seconds,created_at,round_number&round_number=in.(2,3)&limit=1000`,{headers:{apikey:SB_KEY,Authorization:`Bearer ${SB_KEY}`}});
+        const data=await response.json();
+        server=Array.isArray(data)?data.filter(row=>Number(row.round_number)===3||Number(row.remaining_seconds)>40):[];
+      }catch(error){}
+      const ranked=rankRows([...server,...localRows(),current]);
+      const list=box.querySelector('.ranking-list');
+      if(list)list.innerHTML=ranked.slice(0,5).map((row,index)=>`<div>${index+1}. ${row.trainer_name} <span>${row.success?'성공':'실패'} · ${Math.round(row.remaining_seconds)}초</span></div>`).join('')||'아직 기록이 없어요';
+      const live=box.querySelector('.live-rank');
+      if(live)live.textContent=`${current.trainer_name} 트레이너님은 현재 ${Math.max(1,ranked.findIndex(row=>row.trainer_name===current.trainer_name)+1)}위입니다.`;
+    },100);
+    return result;
+  };
 })();
 </script>
